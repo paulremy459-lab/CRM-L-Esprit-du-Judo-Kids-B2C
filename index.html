@@ -389,7 +389,40 @@ function closeModal(id){
   $('#'+id).classList.remove('open');
 }
 
-function saveSubscriber(e){
+// Sauvegarder un abonné à Supabase
+async function saveSubscriberToSupabase(subData, shipmentsList) {
+  if(!sb) return;
+  try {
+    // Insérer l'abonné (Supabase génère l'ID)
+    const {data: insertedSub, error: subError} = await sb
+      .from('subscribers')
+      .insert([subData])
+      .select();
+    
+    if(subError) throw subError;
+    const newId = insertedSub[0].id;
+    
+    // Mettre à jour les envois avec le vrai ID Supabase
+    const shipsToInsert = shipmentsList.map(s => ({
+      ...s,
+      subscriber_id: newId
+    }));
+    
+    const {error: shipError} = await sb
+      .from('shipments')
+      .insert(shipsToInsert);
+    
+    if(shipError) throw shipError;
+    
+    console.log('✅ Abonné sauvegardé à Supabase');
+    return newId;
+  } catch(e) {
+    console.error('❌ Erreur Supabase:', e.message);
+    return null;
+  }
+}
+
+async function saveSubscriber(e){
   e.preventDefault();
   const fname = $('#fname').value;
   const lname = $('#lname').value;
@@ -403,8 +436,8 @@ function saveSubscriber(e){
   // Calculer le magazine de premier envoi selon la date et les deadlines
   const firstMag = getMagazineForSubscription(subDate);
   
-  const sub = {
-    id: nextSubId++,
+  // Créer le sub SANS ID (Supabase va le générer)
+  const subToInsert = {
     first_name: fname,
     last_name: lname,
     email,
@@ -414,6 +447,29 @@ function saveSubscriber(e){
     subscription_duration: subDuration
   };
   
+  // Insérer à Supabase EN PREMIER pour obtenir l'ID généré
+  let subId;
+  if(sb) {
+    try {
+      const {data: insertedSubs, error} = await sb
+        .from('subscribers')
+        .insert([subToInsert])
+        .select();
+      
+      if(error) throw error;
+      subId = insertedSubs[0].id;
+      console.log('✅ Abonné sauvegardé dans Supabase (ID:', subId, ')');
+    } catch(e) {
+      console.error('❌ Erreur Supabase:', e.message);
+      alert('Erreur de sauvegarde: ' + e.message);
+      return;
+    }
+  } else {
+    subId = nextSubId++;
+  }
+  
+  // Créer l'objet local avec l'ID Supabase
+  const sub = {...subToInsert, id: subId};
   subscribers.push(sub);
   
   // Trouver le SCHEDULE correspondant au premier magazine auquel on a droit
@@ -425,6 +481,8 @@ function saveSubscriber(e){
     }
   }
   
+  // Créer les shipments
+  const shipsToInsert = [];
   if(firstScheduleIdx >= 0){
     const endDate = new Date(subDateObj);
     endDate.setFullYear(endDate.getFullYear() + subDuration);
@@ -432,39 +490,54 @@ function saveSubscriber(e){
     let shipmentNum = 1;
     const maxShipments = 6 * subDuration;  // 6 envois par an
     
-    // PREMIER ENVOI: date de sortie du magazine OU date d'abonnement, prendre la plus grande
+    // PREMIER ENVOI
     const releaseDate = new Date(SCHEDULE[firstScheduleIdx].release_date);
     const firstShipmentDate = subDateObj >= releaseDate ? subDate : SCHEDULE[firstScheduleIdx].release_date;
     
-    shipments.push({
-      id: nextShipId++,
-      subscriber_id: sub.id,
+    const ship1 = {
+      subscriber_id: subId,
       shipment_number: shipmentNum,
       magazine_number: SCHEDULE[firstScheduleIdx].mag_if_sub_before_deadline,
       poster_number: shipmentNum,
       sticker_pair: shipmentNum,
-      scheduled_date: firstShipmentDate,  // ← Max(date d'abonnement, date de sortie)
+      scheduled_date: firstShipmentDate,
       sent_at: null
-    });
+    };
+    
+    shipments.push({...ship1, id: nextShipId++});
+    shipsToInsert.push(ship1);
     shipmentNum++;
     
-    // ENVOIS SUIVANTS: dates de sortie (1er du mois)
+    // ENVOIS SUIVANTS
     for(let i = firstScheduleIdx + 1; i < SCHEDULE.length && shipmentNum <= maxShipments; i++){
       const sendDate = new Date(SCHEDULE[i].release_date);
       
       if(sendDate <= endDate){
-        shipments.push({
-          id: nextShipId++,
-          subscriber_id: sub.id,
+        const ship = {
+          subscriber_id: subId,
           shipment_number: shipmentNum,
           magazine_number: SCHEDULE[i].mag_if_sub_before_deadline,
           poster_number: shipmentNum,
           sticker_pair: shipmentNum,
-          scheduled_date: SCHEDULE[i].release_date,  // ← Date de sortie (1er du mois)
+          scheduled_date: SCHEDULE[i].release_date,
           sent_at: null
-        });
+        };
+        
+        shipments.push({...ship, id: nextShipId++});
+        shipsToInsert.push(ship);
         shipmentNum++;
       }
+    }
+  }
+  
+  // Insérer les shipments à Supabase
+  if(sb && shipsToInsert.length > 0) {
+    try {
+      const {error} = await sb.from('shipments').insert(shipsToInsert);
+      if(error) throw error;
+      console.log('✅ Envois sauvegardés');
+    } catch(e) {
+      console.error('❌ Erreur shipments:', e.message);
     }
   }
   
@@ -477,7 +550,7 @@ function saveSubscriber(e){
   $('#sub_duration').value = '';
   closeModal('addModal');
   
-  // Synchroniser avec Google Sheets
+  // Synchroniser avec Google Sheets (garde l'ancien backup)
   syncToGoogleSheets({
     action: 'addSubscriber',
     id: sub.id,
@@ -490,7 +563,6 @@ function saveSubscriber(e){
     subscription_duration: sub.subscription_duration
   });
   
-  // Synchroniser les envois
   const subShipments = shipments.filter(s => s.subscriber_id === sub.id);
   subShipments.forEach(ship => {
     syncToGoogleSheets({
@@ -537,13 +609,39 @@ function updateSubscriber(e){
   sub.subscription_date = $('#edit_sub_date').value;
   sub.subscription_duration = parseInt($('#edit_sub_duration').value);
   
+  // Sauvegarder les modifications à Supabase en arrière-plan
+  if(sb) {
+    (async () => {
+      try {
+        await sb.from('subscribers').update(sub).eq('id', editingSubId);
+        console.log('✅ Abonné mis à jour');
+      } catch(e) {
+        console.error('❌ Erreur update:', e.message);
+      }
+    })();
+  }
+  
   const newSubDate = $('#edit_sub_date').value;
   const newSubDateObj = new Date(newSubDate);
   const newSubDuration = parseInt($('#edit_sub_duration').value);
   const firstMag = getMagazineForSubscription(newSubDate);
   
-  // Supprimer les anciens envois de cet abonné
+  // Supprimer les anciens envois
+  const oldShips = shipments.filter(s=>s.subscriber_id===editingSubId);
   shipments = shipments.filter(s=>s.subscriber_id!==editingSubId);
+  
+  // Supprimer à Supabase aussi
+  if(sb && oldShips.length > 0) {
+    (async () => {
+      try {
+        const shipIds = oldShips.map(s => s.id);
+        await sb.from('shipments').delete().in('id', shipIds);
+        console.log('✅ Anciens envois supprimés');
+      } catch(e) {
+        console.error('❌ Erreur delete ships:', e.message);
+      }
+    })();
+  }
   
   // Trouver le SCHEDULE correspondant au premier magazine
   let firstScheduleIdx = -1;
@@ -554,6 +652,8 @@ function updateSubscriber(e){
     }
   }
   
+  // Créer les nouveaux envois
+  const newShips = [];
   if(firstScheduleIdx >= 0){
     const endDate = new Date(newSubDateObj);
     endDate.setFullYear(endDate.getFullYear() + newSubDuration);
@@ -597,6 +697,29 @@ function updateSubscriber(e){
     }
   }
   
+  // Insérer les nouveaux envois à Supabase
+  const modifiedShipments = shipments.filter(s => s.subscriber_id === editingSubId);
+  if(sb && modifiedShipments.length > 0) {
+    const shipsForSupabase = modifiedShipments.map(s => ({
+      subscriber_id: s.subscriber_id,
+      shipment_number: s.shipment_number,
+      magazine_number: s.magazine_number,
+      poster_number: s.poster_number,
+      sticker_pair: s.sticker_pair,
+      scheduled_date: s.scheduled_date,
+      sent_at: s.sent_at
+    }));
+    
+    (async () => {
+      try {
+        await sb.from('shipments').insert(shipsForSupabase);
+        console.log('✅ Nouveaux envois sauvegardés');
+      } catch(e) {
+        console.error('❌ Erreur insert nouveaux ships:', e.message);
+      }
+    })();
+  }
+  
   // Synchroniser avec Google Sheets
   syncToGoogleSheets({
     action: 'updateSubscriber',
@@ -611,8 +734,8 @@ function updateSubscriber(e){
   });
   
   // Synchroniser les envois modifiés
-  const modifiedShipments = shipments.filter(s => s.subscriber_id === editingSubId);
-  modifiedShipments.forEach(ship => {
+  const modifiedShipments2 = shipments.filter(s => s.subscriber_id === editingSubId);
+  modifiedShipments2.forEach(ship => {
     syncToGoogleSheets({
       action: 'addShipment',
       id: ship.id,
@@ -636,6 +759,19 @@ function deleteSubscriber(id){
   if(!confirm('Supprimer cet abonné et tous ses envois?')) return;
   
   const sub = subscribers.find(s=>s.id===id);
+  
+  // Supprimer à Supabase
+  if(sb) {
+    (async () => {
+      try {
+        // Les shipments se suppriment en cascade grâce aux FK
+        await sb.from('subscribers').delete().eq('id', id);
+        console.log('✅ Abonné supprimé');
+      } catch(e) {
+        console.error('❌ Erreur delete:', e.message);
+      }
+    })();
+  }
   
   // Synchroniser la suppression avec Google Sheets
   syncToGoogleSheets({
@@ -999,6 +1135,17 @@ function markSentFromProfile(shipId){
   ship.sent_at = new Date().toISOString();
   const subId = ship.subscriber_id;
   
+  // Sauvegarder à Supabase
+  if(sb) {
+    (async () => {
+      try {
+        await sb.from('shipments').update({sent_at: ship.sent_at}).eq('id', shipId);
+      } catch(e) {
+        console.error('❌ Erreur update:', e.message);
+      }
+    })();
+  }
+  
   syncToGoogleSheets({
     action: 'updateShipment',
     id: ship.id,
@@ -1015,6 +1162,17 @@ function unmarkSentFromProfile(shipId){
   const ship = shipments.find(s=>s.id===shipId);
   ship.sent_at = null;
   const subId = ship.subscriber_id;
+  
+  // Sauvegarder à Supabase
+  if(sb) {
+    (async () => {
+      try {
+        await sb.from('shipments').update({sent_at: null}).eq('id', shipId);
+      } catch(e) {
+        console.error('❌ Erreur update:', e.message);
+      }
+    })();
+  }
   
   syncToGoogleSheets({
     action: 'updateShipment',
@@ -1142,6 +1300,18 @@ function markSent(id){
   const ship = shipments.find(s=>s.id===id);
   ship.sent_at = new Date().toISOString();
   
+  // Sauvegarder à Supabase
+  if(sb) {
+    (async () => {
+      try {
+        await sb.from('shipments').update({sent_at: ship.sent_at}).eq('id', id);
+        console.log('✅ Envoi marqué comme envoyé');
+      } catch(e) {
+        console.error('❌ Erreur update:', e.message);
+      }
+    })();
+  }
+  
   syncToGoogleSheets({
     action: 'updateShipment',
     id: ship.id,
@@ -1157,6 +1327,18 @@ function unmarkSent(id){
   if(!confirm('Annuler le statut "envoyé" pour cet envoi?')) return;
   const ship = shipments.find(s=>s.id===id);
   ship.sent_at = null;
+  
+  // Sauvegarder à Supabase
+  if(sb) {
+    (async () => {
+      try {
+        await sb.from('shipments').update({sent_at: null}).eq('id', id);
+        console.log('✅ Statut annulé');
+      } catch(e) {
+        console.error('❌ Erreur update:', e.message);
+      }
+    })();
+  }
   
   syncToGoogleSheets({
     action: 'updateShipment',
