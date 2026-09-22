@@ -437,7 +437,7 @@ async function saveSubscriber(e){
   const firstMag = getMagazineForSubscription(subDate);
   
   // Créer le sub SANS ID (Supabase va le générer)
-  // NOTE: 'phone', 'subscription_date', 'subscription_duration' supprimés (erreur schema cache Supabase)
+  // NOTE: phone, subscription_date, subscription_duration RETIRÉS (schema cache Supabase)
   const subToInsert = {
     first_name: fname,
     last_name: lname,
@@ -611,7 +611,7 @@ function updateSubscriber(e){
   if(sb) {
     (async () => {
       try {
-        // NOTE: 'phone' supprimé temporairement (erreur schema cache Supabase)
+        // NOTE: phone, subscription_date, subscription_duration RETIRÉS (schema cache Supabase)
         const updateData = {
           first_name: sub.first_name,
           last_name: sub.last_name,
@@ -1558,6 +1558,32 @@ function renderSettings(){
     </div>`;
 }
 
+async function deleteAllSubscribers(){
+  if(!confirm('⚠️ Êtes-vous vraiment sûr(e)?\n\nCeci va supprimer TOUS les abonnés et leurs envois.\n\nCette action est IRRÉVERSIBLE!')) return;
+  if(!confirm('❌ Ceci est votre DERNIÈRE chance de changer d\'avis!\n\nCliquez OK seulement si vous êtes absolument certain(e).')) return;
+  
+  try {
+    // Supprimer tous les shipments d'abord (FK cascade)
+    const {error: shipErr} = await sb.from('shipments').delete().gte('id', '');
+    if(shipErr) throw shipErr;
+    
+    // Supprimer tous les subscribers
+    const {error: subErr} = await sb.from('subscribers').delete().gte('id', '');
+    if(subErr) throw subErr;
+    
+    // Vider les arrays locaux
+    subscribers.length = 0;
+    shipments.length = 0;
+    
+    console.log('✅ Tous les abonnés ont été supprimés');
+    alert('✅ Tous les abonnés et leurs envois ont été supprimés avec succès');
+    renderDash();
+  } catch(e) {
+    console.error('❌ Erreur suppression:', e.message);
+    alert('❌ Erreur: ' + e.message);
+  }
+}
+
 function changeAccentColor(hex){
   if(/^#[0-9A-F]{6}$/i.test(hex)){
     theme.accent = hex;
@@ -1586,33 +1612,6 @@ function changeVerre(verre){
   theme.verre = verre;
   applyTheme();
   renderSettings(); // Refresh pour voir la bordure active
-}
-
-async function deleteAllSubscribers(){
-  if(!confirm('⚠️ Êtes-vous vraiment sûr(e)?\n\nCeci va supprimer TOUS les abonnés et leurs envois.\n\nCette action est IRRÉVERSIBLE!')) return;
-  if(!confirm('❌ Ceci est votre DERNIÈRE chance de changer d\'avis!\n\nCliquez OK seulement si vous êtes absolument certain(e).')) return;
-  
-  try {
-    // Supprimer tous les shipments d'abord (FK cascade)
-    // .gte('id', '') match tous les UUIDs (string vide < tous les UUIDs)
-    const {error: shipErr} = await sb.from('shipments').delete().gte('id', '');
-    if(shipErr) throw shipErr;
-    
-    // Supprimer tous les subscribers
-    const {error: subErr} = await sb.from('subscribers').delete().gte('id', '');
-    if(subErr) throw subErr;
-    
-    // Vider les arrays locaux
-    subscribers.length = 0;
-    shipments.length = 0;
-    
-    console.log('✅ Tous les abonnés ont été supprimés');
-    alert('✅ Tous les abonnés et leurs envois ont été supprimés avec succès');
-    renderDash();
-  } catch(e) {
-    console.error('❌ Erreur suppression:', e.message);
-    alert('❌ Erreur: ' + e.message);
-  }
 }
 
 function exportData(){
