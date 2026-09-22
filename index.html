@@ -108,8 +108,27 @@ input[type="color"]{
 .form-actions button{flex:1;padding:12px;border-radius:var(--r-sm);border:1px solid var(--stroke);background:var(--glass-2);color:var(--ink);cursor:pointer;font-weight:580}
 .form-actions button.pri{background:linear-gradient(145deg,var(--accent),var(--accent-soft));border:none;color:#fff}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://wojlwjplzlxkvqxmehdu.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indvamx3anBsemx4a3ZxeG1laGR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwNjUwOTcsImV4cCI6MjEwNTY0MTA5N30.Ik7iEpdpSzCyGgMuPpy0oIokaWIWE9E7aE5t-9ePiMA';
+let sb = null;
+</script>
 
 <body>
+<div id="loginScreen" style="position:fixed;top:0;left:0;right:0;bottom:0;background:#040A15;display:flex;align-items:center;justify-content:center;z-index:99999">
+  <div style="background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.10);border-radius:26px;padding:40px;width:90%;max-width:400px">
+    <h2 style="font-size:24px;font-weight:700;margin-bottom:10px;color:#F2F6FF">🥋 Judo Kids</h2>
+    <p style="font-size:13px;color:rgba(242,246,255,.66);margin-bottom:30px">Gestion des envois</p>
+    <form onsubmit="doLogin(event)" style="display:flex;flex-direction:column;gap:14px">
+      <input type="email" id="loginEmail" placeholder="Email" required style="padding:12px 14px;background:rgba(255,255,255,.085);border:1px solid rgba(255,255,255,.10);border-radius:14px;color:#F2F6FF;font-size:14px;outline:none" />
+      <input type="password" id="loginPassword" placeholder="Mot de passe" required style="padding:12px 14px;background:rgba(255,255,255,.085);border:1px solid rgba(255,255,255,.10);border-radius:14px;color:#F2F6FF;font-size:14px;outline:none" />
+      <button type="submit" style="padding:12px;background:linear-gradient(145deg,#7C5CFF,#AF52DE);border:none;border-radius:14px;color:#fff;font-weight:600;cursor:pointer;margin-top:10px">Connexion</button>
+    </form>
+    <div id="loginError" style="color:#FF453A;font-size:12px;margin-top:14px;text-align:center;display:none"></div>
+  </div>
+</div>
+
 <div id="root">
   <aside>
     <div class="logo">
@@ -488,6 +507,7 @@ function saveSubscriber(e){
 }
 
 function editSubscriber(id){
+  id = parseInt(id);
   editingSubId = id;
   const sub = subscribers.find(s=>s.id===id);
   $('#edit_fname').value = sub.first_name;
@@ -606,6 +626,7 @@ function updateSubscriber(e){
 }
 
 function deleteSubscriber(id){
+  id = parseInt(id);
   if(!confirm('Supprimer cet abonné et tous ses envois?')) return;
   
   const sub = subscribers.find(s=>s.id===id);
@@ -625,6 +646,7 @@ function deleteSubscriber(id){
 let renewingSubId = null;
 
 function renewSubscription(id){
+  id = parseInt(id);
   renewingSubId = id;
   const sub = subscribers.find(s=>s.id===id);
   
@@ -860,14 +882,14 @@ function renderAbonnesRows(){
       s.last_name.toLowerCase().includes(search) || 
       (s.email && s.email.toLowerCase().includes(search))
     )
-    .map(s=>`<tr onclick="viewSubscriberProfile(${s.id})" style="cursor:pointer">
+    .map(s=>`<tr onclick="viewSubscriberProfile('${s.id}')" style="cursor:pointer">
       <td class="nm" style="text-decoration:underline">${s.first_name} ${s.last_name}</td>
       <td style="color:var(--ink-3);font-size:11.5px">${s.email||'—'}</td>
       <td style="color:var(--ink-3);font-size:11.5px">${s.phone||'—'}</td>
       <td style="color:var(--ink-3);font-size:11.5px">${s.subscription_date || '—'}</td>
       <td style="text-align:right;display:flex;gap:6px;justify-content:flex-end">
-        <button class="action-btn" onclick="event.stopPropagation(); editSubscriber(${s.id})">✎ Modifier</button>
-        <button class="action-btn danger" onclick="event.stopPropagation(); deleteSubscriber(${s.id})">✕ Supprimer</button>
+        <button class="action-btn" onclick="event.stopPropagation(); editSubscriber('${s.id}')">✎ Modifier</button>
+        <button class="action-btn danger" onclick="event.stopPropagation(); deleteSubscriber('${s.id}')">✕ Supprimer</button>
       </td>
     </tr>`).join('');
 }
@@ -878,6 +900,7 @@ function filterAbonnes(){
 }
 
 function viewSubscriberProfile(id){
+  id = parseInt(id);
   const sub = subscribers.find(s=>s.id===id);
   const subs = shipments.filter(s=>s.subscriber_id===id).sort((a,b)=>new Date(a.scheduled_date)-new Date(b.scheduled_date));
   const sent = subs.filter(s=>s.sent_at).length;
@@ -891,7 +914,7 @@ function viewSubscriberProfile(id){
           <h1>${sub.first_name} ${sub.last_name}</h1>
           <p>Abonné depuis le ${new Date(sub.subscription_date).toLocaleDateString('fr-FR')}</p>
         </div>
-        <button class="btn pri" onclick="renewSubscription(${sub.id})" style="white-space:nowrap">🔄 Renouveler</button>
+        <button class="btn pri" onclick="renewSubscription('${sub.id}')" style="white-space:nowrap">🔄 Renouveler</button>
       </div>
     </div>
     
@@ -952,7 +975,7 @@ function viewSubscriberProfile(id){
           <td>${ship.sticker_pair*2-1}-${ship.sticker_pair*2}</td>
           <td>${new Date(ship.scheduled_date).toLocaleDateString('fr-FR')}</td>
           <td><span class="pill ${ship.sent_at?'':'o'}">${ship.sent_at ? '✅ Envoyé '+new Date(ship.sent_at).toLocaleDateString('fr-FR') : '⏳ En attente'}</span></td>
-          <td style="text-align:right">${ship.sent_at?`<button class="action-btn" style="color:var(--warning)" onclick="unmarkSentFromProfile(${ship.id})">✕</button>`:`<button class="action-btn" onclick="markSentFromProfile(${ship.id})">✓</button>`}</td>
+          <td style="text-align:right">${ship.sent_at?`<button class="action-btn" style="color:var(--warning)" onclick="unmarkSentFromProfile('${ship.id}')">✕</button>`:`<button class="action-btn" onclick="markSentFromProfile('${ship.id}')">✓</button>`}</td>
         </tr>`).join('')}</tbody>
       </table>
     </div>
@@ -964,6 +987,7 @@ function viewSubscriberProfile(id){
 }
 
 function markSentFromProfile(shipId){
+  shipId = parseInt(shipId);
   if(!confirm('Marquer cet envoi comme envoyé?')) return;
   const ship = shipments.find(s=>s.id===shipId);
   ship.sent_at = new Date().toISOString();
@@ -980,6 +1004,7 @@ function markSentFromProfile(shipId){
 }
 
 function unmarkSentFromProfile(shipId){
+  shipId = parseInt(shipId);
   if(!confirm('Annuler le statut "envoyé" pour cet envoi?')) return;
   const ship = shipments.find(s=>s.id===shipId);
   ship.sent_at = null;
@@ -1059,12 +1084,12 @@ function renderEnvois(){
           <tbody>${byMonth[month].map(ship=>{
             const sub = subscribers.find(x=>x.id===ship.subscriber_id);
             return `<tr class="shipment-row" data-subscriber="${(sub.first_name + ' ' + sub.last_name).toLowerCase()}">
-              <td class="nm" style="cursor:pointer;color:var(--accent)" onclick="openProfileModal(${sub.id})">${sub.first_name} ${sub.last_name}</td>
+              <td class="nm" style="cursor:pointer;color:var(--accent)" onclick="openProfileModal('${sub.id}')">${sub.first_name} ${sub.last_name}</td>
               <td>#${ship.magazine_number}</td>
               <td>#${ship.poster_number}</td>
               <td>${ship.sticker_pair*2-1}-${ship.sticker_pair*2}</td>
               <td><span class="pill ${ship.sent_at?'':'o'}">${ship.sent_at?'✅ Envoyé':'⏳ Attente'}</span></td>
-              <td style="text-align:right">${ship.sent_at?`<button class="btn sm" onclick="unmarkSent(${ship.id})" style="color:var(--warning)">✕</button>`:`<button class="btn sm" onclick="markSent(${ship.id})">✓</button>`}</td>
+              <td style="text-align:right">${ship.sent_at?`<button class="btn sm" onclick="unmarkSent('${ship.id}')" style="color:var(--warning)">✕</button>`:`<button class="btn sm" onclick="markSent('${ship.id}')">✓</button>`}</td>
             </tr>`;
           }).join('')}</tbody>
         </table>
@@ -1079,12 +1104,12 @@ function renderEnvois(){
         <tbody id="shipmentsTable">${byMonth[selectedMonth].map(ship=>{
           const sub = subscribers.find(x=>x.id===ship.subscriber_id);
           return `<tr class="shipment-row" data-subscriber="${(sub.first_name + ' ' + sub.last_name).toLowerCase()}">
-            <td class="nm" style="cursor:pointer;color:var(--accent)" onclick="openProfileModal(${sub.id})">${sub.first_name} ${sub.last_name}</td>
+            <td class="nm" style="cursor:pointer;color:var(--accent)" onclick="openProfileModal('${sub.id}')">${sub.first_name} ${sub.last_name}</td>
             <td>#${ship.magazine_number}</td>
             <td>#${ship.poster_number}</td>
             <td>${ship.sticker_pair*2-1}-${ship.sticker_pair*2}</td>
             <td><span class="pill ${ship.sent_at?'':'o'}">${ship.sent_at?'✅ Envoyé':'⏳ Attente'}</span></td>
-            <td style="text-align:right">${ship.sent_at?`<button class="btn sm" onclick="unmarkSent(${ship.id})" style="color:var(--warning)">✕</button>`:`<button class="btn sm" onclick="markSent(${ship.id})">✓</button>`}</td>
+            <td style="text-align:right">${ship.sent_at?`<button class="btn sm" onclick="unmarkSent('${ship.id}')" style="color:var(--warning)">✕</button>`:`<button class="btn sm" onclick="markSent('${ship.id}')">✓</button>`}</td>
           </tr>`;
         }).join('')}</tbody>
       </table>
@@ -1106,6 +1131,7 @@ function filterShipments(){
 }
 
 function markSent(id){
+  id = parseInt(id);
   if(!confirm('Marquer cet envoi comme envoyé?')) return;
   const ship = shipments.find(s=>s.id===id);
   ship.sent_at = new Date().toISOString();
@@ -1121,6 +1147,7 @@ function markSent(id){
 }
 
 function unmarkSent(id){
+  id = parseInt(id);
   if(!confirm('Annuler le statut "envoyé" pour cet envoi?')) return;
   const ship = shipments.find(s=>s.id===id);
   ship.sent_at = null;
@@ -1136,6 +1163,7 @@ function unmarkSent(id){
 }
 
 function openProfileModal(subId){
+  subId = parseInt(subId);
   const sub = subscribers.find(s=>s.id===subId);
   if(!sub) return;
   
@@ -1240,6 +1268,16 @@ function renderSettings(){
   updateCounts();
   $('#content').innerHTML = `
     <div class="head"><h1>⚙️ Paramètres</h1><p>Configuration de l'application</p></div>
+    
+    <div class="glass" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:13px;font-weight:700">👤 Compte</div>
+          <div style="font-size:12px;color:var(--ink-3);margin-top:4px">paul@sen-no-sen.com</div>
+        </div>
+        <button class="btn" style="background:rgba(255,69,58,.2);border:1px solid rgba(255,69,58,.4);color:#FF453A" onclick="doLogout()">📴 Déconnexion</button>
+      </div>
+    </div>
     
     <div class="glass">
       <div style="margin-bottom:24px">
@@ -1374,8 +1412,83 @@ function exportData(){
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
-renderDash();
-applyTheme();
+// ==== FONCTIONS AUTH SUPABASE ====
+async function doLogin(e) {
+  e.preventDefault();
+  const email = $('#loginEmail').value;
+  const pwd = $('#loginPassword').value;
+  const errDiv = $('#loginError');
+  
+  if(!sb) {
+    errDiv.textContent = 'Erreur Supabase';
+    errDiv.style.display = 'block';
+    return;
+  }
+  
+  try {
+    const {data, error} = await sb.auth.signInWithPassword({email, password: pwd});
+    if(error) throw error;
+    
+    $('#loginScreen').style.display = 'none';
+    await loadDataFromSupabase();
+    renderDash();
+    applyTheme();
+  } catch(e) {
+    errDiv.textContent = e.message || 'Erreur de connexion';
+    errDiv.style.display = 'block';
+  }
+}
+
+async function doLogout() {
+  if(!confirm('Déconnecter?')) return;
+  await sb.auth.signOut();
+  subscribers = [];
+  shipments = [];
+  $('#loginScreen').style.display = 'flex';
+  $('#loginEmail').value = '';
+  $('#loginPassword').value = '';
+  $('#loginError').style.display = 'none';
+  $('#loginEmail').focus();
+}
+
+async function loadDataFromSupabase() {
+  try {
+    const { data: subs, error: subErr } = await sb.from('subscribers').select('*');
+    if(subErr) throw subErr;
+    subscribers = subs || [];
+    
+    const { data: ships, error: shipErr } = await sb.from('shipments').select('*');
+    if(shipErr) throw shipErr;
+    shipments = ships || [];
+    
+    console.log(`✅ ${subscribers.length} abonnés, ${shipments.length} envois chargés`);
+  } catch(e) {
+    console.error('❌ Erreur chargement:', e.message);
+  }
+}
+
+// Initialisation au démarrage
+(async () => {
+  if(window.supabase) {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    console.log('✅ Supabase chargé');
+    
+    const {data: {session}} = await sb.auth.getSession();
+    if(session) {
+      console.log('✅ Session trouvée');
+      $('#loginScreen').style.display = 'none';
+      await loadDataFromSupabase();
+      renderDash();
+      applyTheme();
+    } else {
+      console.log('⚠️ Pas de session - affichage login');
+      $('#loginScreen').style.display = 'flex';
+      $('#loginEmail').focus();
+    }
+  } else {
+    console.error('❌ Supabase CDN pas chargé');
+  }
+})();
 </script>
 </body>
 </html>
