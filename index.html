@@ -437,14 +437,12 @@ async function saveSubscriber(e){
   const firstMag = getMagazineForSubscription(subDate);
   
   // Créer le sub SANS ID (Supabase va le générer)
-  // NOTE: 'phone' supprimé temporairement (erreur schema cache Supabase)
+  // NOTE: 'phone', 'subscription_date', 'subscription_duration' supprimés (erreur schema cache Supabase)
   const subToInsert = {
     first_name: fname,
     last_name: lname,
     email,
-    address: addr,
-    subscription_date: subDate,
-    subscription_duration: subDuration
+    address: addr
   };
   
   // Insérer à Supabase EN PREMIER pour obtenir l'ID généré
@@ -618,9 +616,7 @@ function updateSubscriber(e){
           first_name: sub.first_name,
           last_name: sub.last_name,
           email: sub.email,
-          address: sub.address,
-          subscription_date: sub.subscription_date,
-          subscription_duration: sub.subscription_duration
+          address: sub.address
         };
         await sb.from('subscribers').update(updateData).eq('id', editingSubId);
         console.log('✅ Abonné mis à jour');
@@ -1598,11 +1594,12 @@ async function deleteAllSubscribers(){
   
   try {
     // Supprimer tous les shipments d'abord (FK cascade)
-    const {error: shipErr} = await sb.from('shipments').delete().neq('id', 0);
+    // .gte('id', '') match tous les UUIDs (string vide < tous les UUIDs)
+    const {error: shipErr} = await sb.from('shipments').delete().gte('id', '');
     if(shipErr) throw shipErr;
     
     // Supprimer tous les subscribers
-    const {error: subErr} = await sb.from('subscribers').delete().neq('id', 0);
+    const {error: subErr} = await sb.from('subscribers').delete().gte('id', '');
     if(subErr) throw subErr;
     
     // Vider les arrays locaux
