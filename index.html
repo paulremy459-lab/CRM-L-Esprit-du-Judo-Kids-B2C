@@ -437,11 +437,11 @@ async function saveSubscriber(e){
   const firstMag = getMagazineForSubscription(subDate);
   
   // Créer le sub SANS ID (Supabase va le générer)
+  // NOTE: 'phone' supprimé temporairement (erreur schema cache Supabase)
   const subToInsert = {
     first_name: fname,
     last_name: lname,
     email,
-    phone,
     address: addr,
     subscription_date: subDate,
     subscription_duration: subDuration
@@ -613,7 +613,16 @@ function updateSubscriber(e){
   if(sb) {
     (async () => {
       try {
-        await sb.from('subscribers').update(sub).eq('id', editingSubId);
+        // NOTE: 'phone' supprimé temporairement (erreur schema cache Supabase)
+        const updateData = {
+          first_name: sub.first_name,
+          last_name: sub.last_name,
+          email: sub.email,
+          address: sub.address,
+          subscription_date: sub.subscription_date,
+          subscription_duration: sub.subscription_duration
+        };
+        await sb.from('subscribers').update(updateData).eq('id', editingSubId);
         console.log('✅ Abonné mis à jour');
       } catch(e) {
         console.error('❌ Erreur update:', e.message);
@@ -1546,8 +1555,10 @@ function renderSettings(){
     
     <div class="glass">
       <div style="font-size:13px;font-weight:700;margin-bottom:12px">💾 Données</div>
-      <button class="btn" onclick="exportData()" style="width:100%">📥 Exporter en JSON</button>
-      <div style="font-size:11px;color:var(--ink-3);margin-top:8px">Sauvegarde complète de vos abonnés et envois</div>
+      <button class="btn" onclick="exportData()" style="width:100%;margin-bottom:12px">📥 Exporter en JSON</button>
+      <div style="font-size:11px;color:var(--ink-3);margin-bottom:16px">Sauvegarde complète de vos abonnés et envois</div>
+      <button class="btn" onclick="deleteAllSubscribers()" style="width:100%;background:rgba(255,69,58,.2);border:1px solid rgba(255,69,58,.4);color:#FF453A">🗑️ Vider tous les abonnés</button>
+      <div style="font-size:11px;color:var(--danger);margin-top:8px">⚠️ Cette action est irréversible!</div>
     </div>`;
 }
 
@@ -1579,6 +1590,32 @@ function changeVerre(verre){
   theme.verre = verre;
   applyTheme();
   renderSettings(); // Refresh pour voir la bordure active
+}
+
+async function deleteAllSubscribers(){
+  if(!confirm('⚠️ Êtes-vous vraiment sûr(e)?\n\nCeci va supprimer TOUS les abonnés et leurs envois.\n\nCette action est IRRÉVERSIBLE!')) return;
+  if(!confirm('❌ Ceci est votre DERNIÈRE chance de changer d\'avis!\n\nCliquez OK seulement si vous êtes absolument certain(e).')) return;
+  
+  try {
+    // Supprimer tous les shipments d'abord (FK cascade)
+    const {error: shipErr} = await sb.from('shipments').delete().neq('id', 0);
+    if(shipErr) throw shipErr;
+    
+    // Supprimer tous les subscribers
+    const {error: subErr} = await sb.from('subscribers').delete().neq('id', 0);
+    if(subErr) throw subErr;
+    
+    // Vider les arrays locaux
+    subscribers.length = 0;
+    shipments.length = 0;
+    
+    console.log('✅ Tous les abonnés ont été supprimés');
+    alert('✅ Tous les abonnés et leurs envois ont été supprimés avec succès');
+    renderDash();
+  } catch(e) {
+    console.error('❌ Erreur suppression:', e.message);
+    alert('❌ Erreur: ' + e.message);
+  }
 }
 
 function exportData(){
